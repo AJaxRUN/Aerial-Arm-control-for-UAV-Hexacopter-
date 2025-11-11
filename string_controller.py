@@ -4,8 +4,8 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.widgets import Slider
 
 # Constants
-R = 4.5  # Radius of the sphere
-D = 0.25  # Plane cuts the sphere at z = D
+R = 45  # Radius of the sphere (in mm)
+D = 25  # Plane cuts the sphere at z = D (in mm)
 
 # Compute the center of the segment
 segment_center = np.array([0, 0, D])
@@ -42,18 +42,32 @@ def spherical_distance(p, x):
     angle = np.arccos(np.clip(dot_product, -1.0, 1.0))  # Avoid numerical issues
     return R * angle  # Arc length (geodesic distance)
 
-# Initial values for alpha and beta
-alpha_init = 70
-beta_init = 180
+# Function to map geodesic distance to servo range (-1.5 to +1.5)
+def map_to_servo_range(d, d_min, d_max):
+    # Linear mapping of [d_min, d_max] → [-1.5, +1.5]
+    scaled = (d - d_min) / (d_max - d_min)
+    return np.round(-1.5 + 3.0 * scaled, 2)
 
-def map_range(x):
-    return round(1.5 - 3 * ((x - 1.32) / 11),2)
+# Function to compute geodesic curve points between two points on the sphere
+def geodesic_curve(p, q, num_points=50):
+    p = p / np.linalg.norm(p)
+    q = q / np.linalg.norm(q)
+    omega = np.arccos(np.clip(np.dot(p, q), -1.0, 1.0))
+    if np.isclose(omega, 0):
+        return np.array([p * R])  # Same point
+    sin_omega = np.sin(omega)
+    t_vals = np.linspace(0, 1, num_points)
+    curve = [np.sin((1 - t) * omega) / sin_omega * p + np.sin(t * omega) / sin_omega * q for t in t_vals]
+    return R * np.array(curve)
+
+# Initial values for alpha and beta
+alpha_init = 0
+beta_init = 0
 
 # Create figure
 fig = plt.figure(figsize=(8, 8))
 ax = fig.add_subplot(111, projection='3d')
 
-# Function to update plot dynamically
 def update(val):
     ax.clear()
     
@@ -70,12 +84,20 @@ def update(val):
     d2 = spherical_distance(p2, x)
     d3 = spherical_distance(p3, x)
     
-    # Print the coordinates of all points in the terminal
+    # Determine min/max spherical distances for normalization
+    d_min = 0
+    d_max = np.pi * R / 2  # 90° arc on the sphere (reasonable bound)
+    
+    # Map distances to servo values (-1.5 to +1.5)
+    servo1 = map_to_servo_range(d1, d_min, d_max)
+    servo2 = map_to_servo_range(d2, d_min, d_max)
+    servo3 = map_to_servo_range(d3, d_min, d_max)
+
     print(f"Coordinates of Points:")
     print(f"P1: {p1}")
     print(f"P2: {p2}")
     print(f"P3: {p3}")
-    print(f"Servos: {map_range(d1)}, {map_range(d2)}, {map_range(d3)}")
+    print(f"Servos: {servo1}, {servo2}, {servo3}")
     print()
 
     # Plot sphere
@@ -98,10 +120,10 @@ def update(val):
     ax.scatter(*p3, color='y', s=100, label=f"P3 (d={d3:.2f})")
     ax.scatter(*x, color='m', s=100, label="X (Moving)")
 
-    # Plot geodesic lines (curved distance between points)
-    ax.plot([p1[0], x[0]], [p1[1], x[1]], [p1[2], x[2]], 'r--')
-    ax.plot([p2[0], x[0]], [p2[1], x[1]], [p2[2], x[2]], 'b--')
-    ax.plot([p3[0], x[0]], [p3[1], x[1]], [p3[2], x[2]], 'y--')
+    # Plot geodesic dashed curves between Pi and X
+    for p, color in zip([p1, p2, p3], ['r', 'b', 'y']):
+        curve = geodesic_curve(p, x)
+        ax.plot(curve[:, 0], curve[:, 1], curve[:, 2], f'{color}--', linewidth=1.5)
 
     # Labels and limits
     ax.set_xlabel("X-axis")

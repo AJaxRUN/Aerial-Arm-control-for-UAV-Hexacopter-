@@ -95,7 +95,7 @@ static float map_to_servo(int servo_id, double distance) {
     if (scaled < 0.0) scaled = 0.0;
     if (scaled > 1.0) scaled = 1.0;
 
-    float servo_val = servo_min + (servo_max - servo_min) * (float)scaled;
+    float servo_val = servo_max - (servo_max - servo_min) * (float)scaled;
 
     // Clamp and round
     if (servo_val > 1.5f) servo_val = 1.5f;
